@@ -9,7 +9,7 @@ class Context:
 
 	def __getitem__(self, key):
 		if key in self.content:
-			return self.content[key]
+			return self.content[key].format_map(self)
 		return ''
 
 class BuildNode:
@@ -49,7 +49,6 @@ class BuildQueue:
 			node.counter -= 1
 			if not node.counter:
 				self.queue.put(node)
-				self.left.discard(node)
 				self.having += 1
 
 	def get(self):
@@ -62,6 +61,7 @@ class BuildQueue:
 		return self.queue.get()
 
 	def feedback(self, node : BuildNode):
+		self.left.discard(node)
 		self.decrement(node.children)
 
 def execute_task(task : BuildNode, context : Context):
@@ -103,6 +103,11 @@ def worker_thread(build_queue : BuildQueue, context : Context):
 		node = build_queue.get()
 
 def build(context : dict, depends : dict, builds : dict, first : str, num_threads : int = 1):
+	if first not in depends and first not in builds:
+		report_missing(first)
+		report_end(False, [first])
+		return
+	
 	def walkdep(node, result):
 		if node in depends:
 			for dep in depends[node]:
