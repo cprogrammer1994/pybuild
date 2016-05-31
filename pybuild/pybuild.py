@@ -1,11 +1,23 @@
-import os, queue, threading, subprocess, shlex
+import os, sys, queue, threading, subprocess, shlex, textwrap
 
 def get_default(d, k, v):
 	return d[k] if k in d else v
 
+class Pipe:
+	def __init__(self):
+		self.data = bytearray()
+
+	def write(self, text):
+		self.data.extend(text.encode())
+
+	def flush(self):
+		pass
+
 class Context:
 	def __init__(self, content):
-		self.content = content
+		self.content = {}
+		for key in content:
+			self.content[key] = str(content[key])
 
 	def __getitem__(self, key):
 		if key in self.content:
@@ -70,8 +82,18 @@ def execute_task(task : BuildNode, context : Context):
 
 	for build in task.builds:
 		if hasattr(build, '__call__'):
+			pipe, sys.stdout = sys.stdout, Pipe()
 			returncode = build()
-			report_task(task.name, build.__name__, returncode, b'')
+			pipe, sys.stdout = sys.stdout, pipe
+			report_task(task.name, build.__name__, returncode, bytes(pipe.data))
+			if returncode:
+				return False
+
+		elif type(build) is tuple and hasattr(build[0], '__call__'):
+			pipe, sys.stdout = sys.stdout, Pipe()
+			returncode = build[0](*build[1:])
+			pipe, sys.stdout = sys.stdout, pipe
+			report_task(task.name, build[0].__name__, returncode, bytes(pipe.data))
 			if returncode:
 				return False
 
@@ -132,20 +154,30 @@ def build(context : dict, depends : dict, builds : dict, first : str, num_thread
 
 	report_end(not build_queue.left, [node.name for node in build_queue.left])
 
+def wrap(text, indent):
+	return textwrap.indent(textwrap.fill(text, 79 - indent), ' ' * indent)
+
+def ewrap(text, indent):
+	result, *lines = textwrap.wrap(text, 79 - indent)
+	if lines:
+		result += '\n' + textwrap.indent('\n'.join(lines), ' ' * indent)
+	return result
+
 def report_task(task, build, ret, stdout):
+	print(stdout.decode())
 	if ret:
-		print('[ERROR]:', task, build)
+		print('[ERROR]: %s\n%s' % (task, wrap(build, 9)), end = '\n\n')
 	else:
-		print('[OK]:', task, build)
+		print('[OK]: %s\n%s' % (task, wrap(build, 6)), end = '\n\n')
 
 def report_missing(name):
-	print('[MISSING]:', name)
+	print('[MISSING]:', name, end = '\n\n')
 
 def report_start(deps):
-	print('[START]:', *sorted(deps))
+	print('[START]:', ewrap(' '.join(sorted(deps)), 9), end = '\n\n')
 
 def report_end(success, rest):
 	if not success:
-		print('[FAIL]:', *sorted(rest))
+		print('[FAIL]:', ewrap(' '.join(sorted(rest)), 8), end = '\n\n')
 	else:
-		print('[DONE]')
+		print('[DONE]', end = '\n\n')

@@ -2,7 +2,7 @@ from setuptools import setup, Extension
 
 setup(
 	name = 'pybuild',
-	version = '0.1.3',
+	version = '0.2.4',
 	description = 'pybuild',
 	url = 'https://github.com/cprogrammer1994/pybuild',
 	author = 'Szabolcs Dombi',
